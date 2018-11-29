@@ -1,0 +1,130 @@
+from random import random,randint
+import math
+def wineprice(rating,age):
+    '''
+    酒的价格是根据葡萄酒的等级与储藏的年份共同决定的
+    :param rating:
+    :param age:
+    :return:
+    '''
+    peak_age=rating-50
+
+    price=rating/2
+    if age>peak_age:
+
+        price=price*(5-(age-peak_age))
+    else:
+        price=price*(5*((age+1)/peak_age))
+    if price<0:price=0
+    return price
+
+def wineset():
+    rows=[]
+    for i in range(300):
+        rating=random()*50+50  #随机生成50～100之间的值表示等级
+        age=random()*50
+
+        price=wineprice(rating,age)
+
+        # 增加噪声
+        price*=(random()*0.4+0.8)
+        rows.append({'input':(rating,age),
+                    'result':price})
+    return rows
+
+def euclidean(v1,v2):
+    d=0.0
+    for i in range(len(v1)):
+        d+=(v1[i]-v2[i])**2
+    return math.sqrt(d)
+
+def getdistances(data,vec1):
+    distancelist=[]
+    for i in range(len(data)):
+        vec2=data[i]['input']
+        distancelist.append((euclidean(vec2,vec1),i))
+    distancelist.sort()
+    return distancelist
+def knnestimate(data,vec1,k=5):
+    dlist=getdistances(data,vec1)
+    avg=0.0
+    for i in range(k):
+        idx=dlist[i][1]
+        avg+=data[idx]['result']
+    avg=avg/k
+    return avg
+def inverseweight(dist,num=1.0,const=0.1):
+    # 反函数权重～～～距离远的权重衰减得很快
+    return num/(dist+const)
+def subtractweight(dist,const=1.0):
+    if dist>const:
+        return 0
+    else:
+        return const-dist
+
+def gaussianweight(dist,sigma=10.0):
+    # 距离为0的时候所得的权重为1，权重值会随距离的增加而减少。不过这里的权重值始终都会大于0
+    # 缺点是计算速度较反函数、减法函数较慢
+    return math.e**(-dist**2/(2*sigma**2))
+
+
+def weightedknn(data,vec1,k=5,weightf=gaussianweight):
+    dlist=getdistances(data,vec1)
+    avg=0.0
+    totalweight=0.0
+    for i in range(k):
+        dist=dlist[i][0]
+        idx=dlist[i][1]
+        weight=weightf(dist)
+        avg+=weight*data[idx]['result']
+        totalweight+=weight
+    avg=avg/totalweight
+    return avg
+def dividedata(data,test=0.05):
+    trainset=[]
+    testset=[]
+    for row in data:
+        if random()<test:
+            testset.append(row)
+        else:
+            trainset.append(row)
+    return trainset,testset
+
+def testalgorithm(algf,trainset,testset):
+    error=0.0
+    for row in testset:
+        guess=algf(trainset,row['input'])
+        error+=(row['result']-guess)**2
+    return error/len(testset)
+
+def crossvalidate(algf,data,trails=100,test=0.05):
+    # 实现交叉验证的最终步骤是：对数据采取若干不同的划分，并在每个划分上执行testalgorithm，再将所有的error累加起来算平均值
+    error=0.0
+    for i in range(trails):
+        trainset,testset=dividedata(data,test=test)
+        error+=testalgorithm(algf,trainset,testset)
+    return error/trails
+def wineset2():
+    rows=[]
+    for i in range(300):
+        rating=random()*50+50
+        age=random()*50
+        aisle=float(randint(1,20))
+        bottlesize=[375.0,750.0,1500.0,3000.0][randint(0,3)]
+        price=wineprice(rating,age)
+        price*=(bottlesize/750)
+        price*=(random()*0.9+0.2)
+        rows.append({'input':(rating,age,aisle,bottlesize),'result':price})
+    return rows
+def rescale(data,scale):
+    scaleddata=[]
+    for row in data:
+        scaled=[scale[i]*row['input'][i] for i in range(len(scale))]
+        scaleddata.append({'input':scaled,'result':row['result']})
+    return scaleddata
+def createcostfunction(algf,data):
+    #封装crosscalidate函数，令其接受一组数据作为参数，然后对数据进行按比例缩放，并计算交叉验证的误差
+    def costf(scale):
+        sdata=rescale(data,scale)
+        return crossvalidate(algf,sdata,trails=10)
+    return costf
